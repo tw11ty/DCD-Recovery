@@ -12,7 +12,7 @@
 ![image](https://github.com/user-attachments/assets/d414f033-9246-45fa-ae34-cc5546d7a30d)
 
 
-使用后（shift-R）：
+应用后（shift-R）：
 
 ![image](https://github.com/user-attachments/assets/e55dbf96-0500-462d-b47c-1555b04f0493)
 
