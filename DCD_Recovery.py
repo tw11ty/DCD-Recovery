@@ -44,7 +44,7 @@ class DCD_Recovery(idaapi.plugin_t):
                         string = string_data.decode('utf-8').strip()
 
                         if string:
-                            print(f"Found string at {hex(ea)}: {string} ")  # 这里去掉了单引号，避免多余的引号
+                            print(f"Found string at {hex(ea)}: {string} ")  
 
                             # print(f"String suffix: {string[-4:]}") 
                             # 检查后缀是否为.cgi、.html或.htm
