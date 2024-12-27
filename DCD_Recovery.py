@@ -10,58 +10,66 @@ class DCD_Recovery(idaapi.plugin_t):
     wanted_name = "DCD Recovery"
     wanted_hotkey = "Shift+R"
 
+    def __init__(self):
+        super().__init__()
+        self.byte_order = None  # 用于存储用户选择的字节序
+
     def init(self):
         return idaapi.PLUGIN_OK
 
     def run(self, arg):
+        # 如果字节序尚未选择，则提示用户选择
+        if not self.byte_order:
+            self.byte_order = self.choose_byte_order()
+            if not self.byte_order:
+                print("No byte order selected. Exiting.")
+                return
+
+        print(f"Using byte order: {self.byte_order}")
+
         # 获取当前选中的地址范围
         selstart, selend = idc.read_selection_start(), idc.read_selection_end()
-        if selstart == idc.BADADDR or selend == idc.BADADDR or selstart == selend:  # 无效的地址范围
+        if selstart == idc.BADADDR or selend == idc.BADADDR or selstart == selend:
             print("No valid selection or selection is empty.")
             return
 
         print(f"Selected address range: {hex(selstart)} - {hex(selend)}")
 
-        selection = list(idautils.Heads(selstart, selend + 1))  # 获取选中的地址范围
+        selection = list(idautils.Heads(selstart, selend + 1))
 
         if not selection:
             print("No instructions or data in the selected range.")
             return
 
         print(f"Total selected items: {len(selection)}")
-        
+
         for ea in selection:
             if ida_bytes.is_data(ida_bytes.get_flags(ea)):
                 data = ida_bytes.get_bytes(ea, idc.get_item_size(ea))
                 if data:
                     try:
-#********************************************* 按情况处理指针指向的字符串 *********************************************
-                        pointer_value = int.from_bytes(data[:4], byteorder='little')  # 默认小端序，取前4字节作为指针值
+                        # 根据用户选择的字节序解析指针值
+                        pointer_value = int.from_bytes(data[:4], byteorder=self.byte_order)
 
                         # 获取指针指向的字符串
-                        string_data = ida_bytes.get_bytes(pointer_value, 256)  # 获取指针指向的字符串 
-                        string_data = string_data.split(b'\x00')[0]  # 截断
+                        string_data = ida_bytes.get_bytes(pointer_value, 256)
+                        string_data = string_data.split(b'\x00')[0]
                         string = string_data.decode('utf-8').strip()
 
                         if string:
-                            print(f"Found string at {hex(ea)}: {string} ")  
+                            print(f"Found string at {hex(ea)}: {string}")
 
-                            # print(f"String suffix: {string[-4:]}") 
-                            # 检查后缀是否为.cgi、.html或.htm
-#********************************************* 内容可以根据情况修改 *********************************************
-                            if string.endswith('.cgi') or string.endswith('.html') or string.endswith('.htm'):
-                                # 根据文件后缀处理
+                            if string.endswith(('.cgi', '.html', '.htm')):
                                 func_name = self.generate_function_name(string)
                             else:
-                                print(f"Skipping non-cgi/htm/html string at {hex(ea)}: {string}")
                                 func_name = self.generate_function_name(string)
-                                
+
                             print(f"Generated function name: {func_name}")
+
                             # 查找与该字符串关联的函数地址
-                            next_addr = self.get_function_address(ea + len(data))  # 查找字符串后的函数地址
+                            next_addr = self.get_function_address(ea + len(data))
 
                             if next_addr != idc.BADADDR:
-                                # 如果找到了有效的函数地址，重命名该函数
                                 print(f"Renaming function at address: {hex(next_addr)}")
                                 self.rename_function(next_addr, func_name)
                             else:
@@ -73,8 +81,16 @@ class DCD_Recovery(idaapi.plugin_t):
             else:
                 print(f"Address {hex(ea)} is not a data item.")
 
+    def choose_byte_order(self):
+        # 插件运行时选择字节序
+        choice = idc.ask_yn(1, "Use Little Endian byte order?\nSelect No for Big Endian.")
+        if choice == 1:
+            return 'little'
+        elif choice == 0:
+            return 'big'
+        return None
+
     def generate_function_name(self, string):
-        # 根据文件后缀处理函数名称
         if string.endswith('.cgi'):
             base_name = string[:-4]
             return f"{self.str_replace(base_name)}CGI"
@@ -85,25 +101,11 @@ class DCD_Recovery(idaapi.plugin_t):
             base_name = string[:-5]
             return f"{self.str_replace(base_name)}HTML"
         else:
-            return self.str_replace(string.upper())   
+            return self.str_replace(string.upper())
 
     def str_replace(self, str):
-        # 替换字符串中可能会出现的 ; : [ ] / ? ! * 等特殊字符
-        str = str.replace(';', '_')
-        str = str.replace(':', '_')
-        str = str.replace('[', '_')
-        str = str.replace(']', '_')
-        str = str.replace('/', '_')
-        str = str.replace('?', '_')
-        str = str.replace('!', '_')
-        str = str.replace('*', '_')
-        str = str.replace('|', '_')
-        str = str.replace('\\', '_')
-        str = str.replace('"', '_')
-        str = str.replace('\'', '_')
-        str = str.replace('<', '_')
-        str = str.replace('>', '_')
-        str = str.replace('.', '_')
+        for ch in ";:[]/?!*|\\\"'<>.":
+            str = str.replace(ch, '_')
         return str
 
     def get_function_address(self, ea):
@@ -113,7 +115,6 @@ class DCD_Recovery(idaapi.plugin_t):
         return idc.BADADDR
 
     def rename_function(self, address, func_name):
-        # 如果地址已经是函数地址，则跳过
         print(f"Renaming address {hex(address)} to {func_name}")
         if not idc.set_name(address, func_name, idaapi.SN_FORCE):
             print(f"Failed to rename {hex(address)}")
